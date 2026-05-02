@@ -14,7 +14,26 @@ This project was completed as a practice data analysis assignment. The analysis 
 4. Find the average number of views per video published in 2018
 5. **Business report:** Evaluate whether the most polarizing videos get shared the most, and identify what other metrics should be investigated
 
-Tools used: `pandas`, `numpy`, `matplotlib`, `seaborn`, `statsmodels`
+**Pipeline:** Snowflake, SQL, Python (`re`)  
+**Analysis:** `pandas`, `numpy`, `matplotlib`, `seaborn`, `statsmodels`, `pyarrow`
+
+---
+
+## Pipeline
+
+Raw data was processed through a Snowflake pipeline before analysis:
+
+1. **CSV Preprocessing** — Python (`re`) was used to fix malformed pipe-delimited ('|') tags within quoted fields before staging
+2. **Staging** — Cleaned CSV files loaded into Snowflake internal stage
+3. **Loading** — Data loaded into typed tables with correct data types including `TIMESTAMP_NTZ` and `BOOLEAN`
+4. **Date Conversion** — Non-standard trending date format (`YY.DD.MM`) converted to `DATE`
+5. **Category Mapping** — YouTube category JSON parsed using `LATERAL FLATTEN` and joined to video data
+6. **Merging** — US and GB tables unioned with a `country` column added
+7. **Quality Checks** — Null checks, duplicate analysis, and distribution checks performed
+8. **Aggregation** — Daily video metrics aggregated to one row per video using peak values
+9. **Export** — Final table exported as Parquet files for Python analysis
+
+See `youtube_staging.sql` for the full pipeline script.
 
 ---
 
@@ -26,19 +45,22 @@ The datasets used are the [Trending YouTube Video Statistics](https://www.kaggle
 - `GBvideos.csv` — 38,916 rows of daily GB trending video metrics
 - `US_category_id.json` — category ID to name mapping
 
-> **Note:** The CSV files exceed GitHub's file size limits and are not hosted in this repository. To run the analysis locally, download the data from the Kaggle link above and place the files in the project root directory.
+**Pipeline output:** Raw CSV files were cleaned, transformed, and aggregated in Snowflake before being exported as Parquet files for analysis. The Python analysis reads directly from the Parquet output.
+
+> **Note:** Raw CSV files exceed GitHub's file size limits and are not hosted in this repository. Download from Kaggle and place in the `data/` folder. Parquet output files are in the `output/` folder.
 
 ---
 
 ## How to Run
 
 1. Clone the repository
-2. Download the data files from Kaggle and place them in the project root
+2. Download the data files from Kaggle and place them in the `data/` folder
 3. Install dependencies:
     ```bash
-    pip install pandas numpy matplotlib seaborn statsmodels
+    pip install pandas numpy matplotlib seaborn statsmodels pyarrow
     ```
-4. Open `Trending_YouTube.ipynb` in Jupyter or run `Trending YouTube Video Statistics Simplified.py` directly in VS Code
+4. *(Optional)* Run `youtube_staging.sql` in Snowflake to reproduce the pipeline and regenerate Parquet output into the `output/` folder
+5. Run `Trending_YouTube_Video_Statistics_Simplified.py` in VS Code or Jupyter
 
 ---
 
