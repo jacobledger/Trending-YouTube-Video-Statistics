@@ -11,113 +11,65 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import statsmodels.formula.api as smf
-import json
 import seaborn as sns
-# loading the first dataframe and examining
-df_US = pd.read_csv('USvideos.csv')
-# loading category id map
-with open('US_category_id.json') as f:
-    category_data = json.load(f)
-print(df_US.columns)
-print(df_US.info())
-print(df_US.head())
+
+# Loading the table
+df = pd.concat([
+    pd.read_parquet('output/all_videos_final.parquet_0_0_0.snappy.parquet'),
+    pd.read_parquet('output/all_videos_final.parquet_0_1_0.snappy.parquet'),
+    pd.read_parquet('output/all_videos_final.parquet_0_2_0.snappy.parquet'),
+    pd.read_parquet('output/all_videos_final.parquet_0_3_0.snappy.parquet')
+])
+
+print(df.shape)
+print(df.dtypes)
+display(df.head(10))
 
 # %%
-df_GB = pd.read_csv('GBvideos.csv')
-print(df_GB.head())
-print(df_US.category_id.unique())
+# Columns names were dropped in export.
+# Renaming columns
+df = df.rename(columns = {
+    '_COL_0': 'video_id',
+    '_COL_1': 'title',
+    '_COL_2': 'channel_title',
+    '_COL_3': 'category_title',
+    '_COL_4': 'country', 
+    '_COL_5': 'views',
+    '_COL_6': 'likes',
+    '_COL_7': 'dislikes',
+    '_COL_8': 'comment_count',
+    '_COL_9': 'publish_time',
+    '_COL_10': 'days_trending'})
+
+print(df.head())
+print(df.dtypes)
 
 # %%
-# two columns should be datetime but are listed as objects: trending_date, publish_time
-# converting columns to datetime
-df_US.publish_time = pd.to_datetime(df_US.publish_time)
-df_GB.publish_time = pd.to_datetime(df_GB.publish_time)
-
-df_US.trending_date = pd.to_datetime(df_US.trending_date, format='%y.%d.%m') # date format is unique
-df_GB.trending_date = pd.to_datetime(df_GB.trending_date, format='%y.%d.%m')
-
-print(df_US.publish_time.head())
-print(df_GB.publish_time.head())
-
-print(df_US.info())
-print(df_GB.info())
-
-# %%
-# category_id should be in category format
-df_US.category_id = df_US.category_id.astype('category')
-df_GB.category_id = df_GB.category_id.astype('category')
-
-print('Unique values count:')
-print(df_US.category_id.nunique())
-print(df_GB.category_id.nunique())
-print(df_US.category_id.unique())
-print(df_GB.category_id.unique())
-
-# %%
-# mapping category_id to our category_data
-category_map = {
-    int(item['id']) : item['snippet']['title']
-    for item in category_data['items']
-}
-print(category_map)
-
-# %%
-print(df_US.trending_date.drop_duplicates().head(30)) # need a few more rows to validate date format and drop_duplicates helps display more unique dates
-print(df_GB.trending_date.drop_duplicates().head(30))
-
-# %%
-# datatypes are corrrected and datetime format looks consistent
-# quantifying the missing values in description column
-print(df_US.description.isnull().sum())
-print(df_GB.description.isnull().sum())
-
-# %% [markdown]
-# Out of 40949 entries, 570 descriptions are left missing in the US data set. Out of 38916, 612 are missing from the Great Britian dataset. I'll keep the missing entries in to check for confounding variables, but we are examining views and like to dislike ratios so it's likely not important.
-
-# %%
-print(df_US.duplicated().sum())
-print(df_US.video_id.nunique())
-print(df_GB.duplicated().sum())
-print(df_GB.video_id.nunique())
-print(df_US.category_id.nunique())
-print(df_GB.category_id.nunique())
-
-# %% [markdown]
-# A quick glance at the unique number of rows and we can see this appears to be daily video metrics rather than unique video data. The question posed, "What is the average like-dislike ratio for all of the videos," implies unique videos not video-day observations. The data frames will have to be aggregated by video id. Since videos appear on multiple trending days, I will aggregate to one row per video using peak values.
-
-# %%
-df_US_video = (
-    df_US
-    .groupby('video_id')
-    .agg({
-        'views': 'max',
-        'likes': 'max',
-        'dislikes': 'max',
-        'comment_count': 'max',
-        'publish_time': 'first', # publish time over trending time used to find "the average number of likes per video for the US and GB in the year 2018"
-        'category_id': 'first'
-    })
-    .reset_index()
-)
-df_GB_video = (
-    df_GB
-    .groupby('video_id')
-    .agg({
-        'views': 'max',
-        'likes': 'max',
-        'dislikes': 'max',
-        'comment_count': 'max',
-        'publish_time': 'first',
-        'category_id': 'first'
-    })
-    .reset_index()
+# Views, likes, dislikes, comment count, and days trending should be integers
+# Fix Snowflake Decimal type export issue
+df[['views', 'likes', 'dislikes', 'comment_count', 'days_trending']] = (
+    df[['views', 'likes', 'dislikes', 'comment_count', 'days_trending']].astype(float)
 )
 
-print(df_US_video.head())
-print(df_GB_video.head())
+# publish_time should be datetime
+df.publish_time = pd.to_datetime(df.publish_time)
+
+print(df.dtypes)
 
 # %%
-# the dataframes have been aggregated
+# Creating df for each country
+df_US_video = df[df['country'] == 'US']
+df_GB_video = df[df['country'] == 'GB']
+
+print("df_US duplicated sum:", df_US_video.duplicated().sum())
+print("df_US unique video_id", df_US_video.video_id.nunique())
+print("df_GB duplicated sum:", df_GB_video.duplicated().sum())
+print("df_GB unique video_id:", df_GB_video.video_id.nunique())
+print("df_US unique category_title:", df_US_video.category_title.nunique())
+print("df_GB unique category_title:", df_GB_video.category_title.nunique())
+
+# %%
+# the dataframe has been aggregated previously in pipeline
 # adding likes to dislike ratio column
 # checking for zero dislikes as they will impact calculations
 df_US_zero_dislikes = df_US_video[df_US_video['dislikes'] == 0]
@@ -126,8 +78,8 @@ df_GB_zero_dislikes = df_GB_video[df_GB_video['dislikes'] == 0]
 print(df_GB_zero_dislikes.count())
 
 # %%
-# 93 and 23 zero dislikes entries for both dataframes
-# assigning NaN to zero dislikes removes 116 entries, which affects results very little
+# 99 and 27 zero dislikes entries for both dataframes
+# assigning NaN to zero dislikes removes 126 entries, which affects results very little
 # they would be left skewing outliers that do not meaningfully add to our analysis at the moment
 df_US_video['likes_to_dislikes'] = np.where(
     df_US_video['dislikes'] > 0,
@@ -197,8 +149,8 @@ histogram('comment_count', 'Comment Count (log scale)', 'Log Transformed Comment
 # %%
 # histograms all look fairly symetrical in log scale and are similar between countries
 # answering the question, "whats the average ratio for all videos?"
-all_df_video = pd.concat([df_US_video.assign(country='US'),
-                          df_GB_video.assign(country='GB')])
+all_df_video = pd.concat([df_US_video, df_GB_video])
+
 mean_ratio = (
     all_df_video['likes'].mean() /
     all_df_video['dislikes'].mean()
@@ -223,7 +175,7 @@ median_2018 = np.round(df_2018.views.median(), 2)
 print(f'Median views in 2018: {median_2018}')
 
 # %%
-# Average likes in 2018 is approximately 3656840.82
+# Average views in 2018 is approximately 3656840.82
 # are the most polarizing videos getting shared the most?
 # creating engagement rate column
 all_df_video['engagement_rate'] = (
@@ -322,16 +274,11 @@ plt.title('View Distribution by Polarization Tier')
 # One final analysis, I will account for confounding variables like category and likes. Category has not been analyzed yet so next we take a look.
 
 # %%
-all_df_video['category_name'] = ( #applying category_map to the final dataframe to get new column
-    all_df_video['category_id']
-    .map(category_map)
-)
-
-df = all_df_video.copy() # analysis requires log scale, making copy of df to scale
-df['log_likes'] = np.log10(df['likes'] + 1)
+df_copy = all_df_video.copy() # analysis requires log scale, making copy of df to scale
+df_copy['log_likes'] = np.log10(df_copy['likes'] + 1)
 # creating new df grouped by category and ordered by median likes
-order = df.groupby('category_name', observed=False)['log_likes'].median().sort_values(ascending=False).index
-box_mask = [df.loc[df['category_name'] == c, 'log_likes'] for c in order] # mask for a boxplot of each category in same plot
+order = df_copy.groupby('category_title', observed=False)['log_likes'].median().sort_values(ascending=False).index
+box_mask = [df_copy.loc[df_copy['category_title'] == c, 'log_likes'] for c in order] # mask for a boxplot of each category in same plot
 plt.figure(figsize=(10,6))
 plt.boxplot(box_mask, tick_labels=order)
 plt.xticks(rotation=45, ha='right')
@@ -346,7 +293,7 @@ plt.title('Median Likes by Category (log scale)')
 # summary table of median values by categories
 summary = (
     all_df_video
-    .groupby('category_name', observed=True)
+    .groupby('category_title', observed=True)
     .agg(
         median_views=('views', 'median'),
         median_likes=('likes', 'median'),
@@ -364,14 +311,14 @@ print(summary)
 
 # %%
 # log trasnformed views (add 1 to avoid log(0))
-df['log_views'] = np.log10(df['views'] + 1)
+df_copy['log_views'] = np.log10(df_copy['views'] + 1)
 # log trasnformed likes
-df['log_likes'] = np.log10(df['likes'] + 1)
+df_copy['log_likes'] = np.log10(df_copy['likes'] + 1)
 # Create dislike rate (clean polarization metric)
-df['dislike_rate'] = df['dislikes'] / (df['likes'] + df['dislikes'] + 1)
+df_copy['dislike_rate'] = df_copy['dislikes'] / (df_copy['likes'] + df_copy['dislikes'] + 1)
 model = smf.ols(
-    'log_views ~ dislike_rate + C(category_name) + C(country)',
-    data=df
+    'log_views ~ dislike_rate + C(category_title) + C(country)',
+    data=df_copy
 ).fit()
 print(model.summary())
 
@@ -380,17 +327,17 @@ print(model.summary())
 # This suggests negatively received videos are not generating greater reach or views.
 # Trying log_likes as a controlled variable
 model = smf.ols(
-    'log_views ~ dislike_rate + C(category_name) + log_likes',
-    data=df
+    'log_views ~ dislike_rate + C(category_title) + log_likes',
+    data=df_copy
 ).fit()
 print(model.summary())
 
 # %%
 # checking engagement rate against dislike rate
-df['log_engagement'] = np.log10(df['engagement_rate'] + 1)
+df_copy['log_engagement'] = np.log10(df_copy['engagement_rate'] + 1)
 model = smf.ols(
-    'log_engagement ~ dislike_rate + C(category_name) + C(country)',
-    data=df
+    'log_engagement ~ dislike_rate + C(category_title) + C(country)',
+    data=df_copy
 ).fit()
 print(model.summary())
 
